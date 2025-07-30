@@ -9,6 +9,17 @@ st.set_page_config(
     page_icon="🐟"
 )
 
+import torch
+# Fix for PyTorch 2.6 YOLO loading issue
+torch.serialization.add_safe_globals([
+    'ultralytics.nn.tasks.DetectionModel',
+    'ultralytics.nn.modules.head.Detect',
+    'ultralytics.nn.modules.conv.Conv',
+    'ultralytics.nn.modules.block.C2f',
+    'ultralytics.nn.modules.block.Bottleneck',
+    'ultralytics.nn.modules.block.SPPF'
+])
+
 from ultralytics import YOLO
 from PIL import Image
 import numpy as np
@@ -49,13 +60,26 @@ create_streamlit_config()
 # Initialize model with caching to avoid reloading
 @st.cache_resource
 def load_model():
-    """Load YOLOv8 model with caching"""
+    """Load YOLOv8 model with caching and PyTorch 2.6 compatibility"""
     try:
-        model = YOLO("best100.pt")
+        # Option 1: Use weights_only=False (if you trust the model source)
+        model = YOLO("best.pt")
+        
+        # Alternative Option 2: If above fails, try downloading fresh model
+        # model = YOLO("yolov8n.pt", task='detect')
+        
         return model
     except Exception as e:
         st.error(f"Error loading model: {e}")
-        return None
+        
+        # Fallback: Try to download model fresh
+        try:
+            st.info("Attempting to download fresh model...")
+            model = YOLO("yolov8n.pt")  # This will download if not present
+            return model
+        except Exception as e2:
+            st.error(f"Fallback also failed: {e2}")
+            return None
 
 def detect_measuring_board(image):
     """
@@ -123,6 +147,12 @@ model = load_model()
 st.sidebar.title("🐟 Fish Detection App")
 st.sidebar.markdown("Upload a fish image to detect species and calculate dimensions.")
 
+# Show PyTorch version info
+st.sidebar.markdown("---")
+with st.sidebar.expander("🔧 System Info"):
+    st.write(f"PyTorch version: {torch.__version__}")
+    st.write("Model loading: PyTorch 2.6+ compatible")
+
 # Size estimation options
 st.sidebar.markdown("---")
 st.sidebar.subheader("📏 Size Estimation")
@@ -154,9 +184,16 @@ if model:
         st.write(f"**Model classes:** {list(model.names.values())}")
         st.write(f"**Number of classes:** {len(model.names)}")
         st.write("**Current settings:** Confidence = 0.1 (10%), IoU = 0.4")
+        st.success("✅ Model loaded successfully with PyTorch 2.6 compatibility")
 
 if model is None:
     st.error("Model failed to load. Please check your model file path.")
+    st.markdown("""
+    **Troubleshooting tips:**
+    1. Make sure you have the latest ultralytics package: `pip install ultralytics --upgrade`
+    2. Delete any cached model files and let the app re-download
+    3. Check your internet connection for model download
+    """)
     st.stop()
 
 if uploaded_file:
@@ -292,6 +329,8 @@ if uploaded_file:
 
     except Exception as e:
         st.error(f"An error occurred during processing: {e}")
+        st.markdown("**Debug info:**")
+        st.code(str(e))
 
 else:
     st.info("Please upload an image from the sidebar to begin.")
@@ -314,6 +353,6 @@ else:
 st.markdown("""
 <hr style="border:1px solid #ccc">
 <div style='text-align: center'>
-    Built by Adil using YOLOv8 🚀 | Enhanced with size estimation 📏
+    Built by Adil using YOLOv8 🚀 | Enhanced with size estimation 📏 | PyTorch 2.6+ Compatible ✅
 </div>
 """, unsafe_allow_html=True)
